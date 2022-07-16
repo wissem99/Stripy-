@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "WS2812.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,313 +58,6 @@ static void MX_TIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define MAX_LED 29
-#define USE_BRIGHTNESS 0
-#define BlinkerLEDs 7
-
-uint8_t LED_Data[MAX_LED][4];
-uint8_t LED_Mod[MAX_LED][4];  // for brightness
-
-int datasentflag=0;
-
-int BlinkerSpeed = 200; //Blinker Running LED Speed. Adjust this to match with your Bike blinker speed.
-int BlinkerOffDelay = 300; //Blinker Off time. Adjust this to match with your Bike blinker speed.
-
-
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
-{
-	HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_1);
-	datasentflag=1;
-}
-
-void Set_LED (int LEDnum, int Green, int Red, int Blue)
-{
-	LED_Data[LEDnum][0] = LEDnum;
-	LED_Data[LEDnum][1] = Green;
-	LED_Data[LEDnum][2] = Red;
-	LED_Data[LEDnum][3] = Blue;
-}
-
-#define PI 3.14159265
-
-void Set_Brightness (int brightness)  // 0-45
-{
-#if USE_BRIGHTNESS
-
-	if (brightness > 45) brightness = 45;
-	for (int i=0; i<MAX_LED; i++)
-	{
-		LED_Mod[i][0] = LED_Data[i][0];
-		for (int j=1; j<4; j++)
-		{
-			float angle = 90-brightness;  // in degrees
-			angle = angle*PI / 180;  // in rad
-			LED_Mod[i][j] = (LED_Data[i][j])/(tan(angle));
-		}
-	}
-
-#endif
-
-}
-
-uint16_t pwmData[(24*MAX_LED)+50];
-
-void WS2812_Send (void)
-{
-	uint32_t indx=0;
-	uint32_t color;
-
-
-	for (int i= 0; i<MAX_LED; i++)
-	{
-#if USE_BRIGHTNESS
-		color = ((LED_Mod[i][1]<<16) | (LED_Mod[i][2]<<8) | (LED_Mod[i][3]));
-#else
-
-		color = ((LED_Data[i][1]<<16) | (LED_Data[i][2]<<8) | (LED_Data[i][3]));
-#endif
-
-		for (int i=23; i>=0; i--)
-		{
-			if (color&(1<<i))
-			{
-				pwmData[indx] = 80;  // 2/3 of 120
-			}
-
-			else pwmData[indx] = 30;  // 1/3 of 120
-
-			indx++;
-		}
-
-	}
-
-	for (int i=0; i<50; i++)
-	{
-		pwmData[indx] = 0;
-		indx++;
-	}
-
-	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, (uint32_t *)pwmData, indx);
-	while (!datasentflag){};
-	datasentflag = 0;
-}
-
-void Reset_LED (void)
-{
-	for (int i=0; i<MAX_LED; i++)
-	{
-		LED_Data[i][0] = i;
-		LED_Data[i][1] = 0;
-		LED_Data[i][2] = 0;
-		LED_Data[i][3] = 0;
-	}
-}
-
-
-
-
-// functions
-// brakeFull : all leds red with 100% Brightness : 36 leds
-
-void BrakeFull()
-{
-  for (int i = 0; i < MAX_LED; i++)
-  {
-	  Set_LED (i, 0, 255 , 0);
-  }
-  WS2812_Send();
-}
-
-// BrakeMidlle : led 10 to led 36-10
-
-void BrakeMiddle()
-{
-  for (int i = BlinkerLEDs; i < (MAX_LED - BlinkerLEDs); i++)
-  {
-    Set_LED(i,0,255,0);
-  }
-    WS2812_Send();
-}
-
-// ParkFull : all led are red with 25% Brightness
-
-void ParkFull()
-{
-  for (int i = 0; i < MAX_LED; i++)
-  {
-	  Set_LED(i,0,255,0);
-  }
-      WS2812_Send();
-}
-
-// ParkMiddle : led 10 to 36 : red with 25%brightness
-
-void ParkMiddle()
-{
-  for (int i = BlinkerLEDs; i < (MAX_LED - BlinkerLEDs); i++)
-  {
-	  Set_LED (i,0,60,0);
-	   }
-	       WS2812_Send();
-	 }
-
-// Left Functions
-
-// Led for BlinkerLEDs-1 to 0 are Blinking with delay equal to BlinkerSpeed
-
-void LeftBlinker()
-{
-  for (int i = (BlinkerLEDs-1); i >= 0; i--)
-  {
-	  Set_LED(i,100, 240, 0);
-	  WS2812_Send();
-	  HAL_Delay(BlinkerSpeed) ;
-
-  }
-}
-
-//Led for 0 to BlinkerLEDs are reset to 0
-
-void LeftDim()
-{
-  for (int i = 0; i < BlinkerLEDs; i++)
-  {
-	  Set_LED(i,0, 0, 0);
-  }
-  WS2812_Send();
-}
-
-// Led for 0 to (MAX_LED - BlinkerLEDs) are set to Red color with 30% Brightness
-
-void LeftLit()
-{
-  for (int i = 0; i < (MAX_LED - BlinkerLEDs); i++)
-  {
-	  Set_LED(i,0, 150, 0);
-  }
-  WS2812_Send();
-}
-
-// Led for 0 to (MAX_LED - BlinkerLEDs) are set to Red color with full Brightness
-
-void LeftFull()
-{
-  for (int i = 0; i < (MAX_LED - BlinkerLEDs); i++)
-  {
-	  Set_LED(i,0, 255, 0);
-  }
-  WS2812_Send();
-}
-
-// Right Functions
-
-//Led for (MAX_LED - BlinkerLEDs) to MAX_LED are Blinking with delay equal to BlinkerSpeed
-
-void RightBlinker()
-{
-  for (int i = (MAX_LED - BlinkerLEDs); i < MAX_LED; i++)
-  {
-	  Set_LED(i,100, 240, 0);
-	  WS2812_Send();
-      HAL_Delay(BlinkerSpeed);
-  }
-}
-
-//Led for (MAX_LED - BlinkerLEDs) to MAX_LED are reset to 0
-
-void RightDim()
-{
-   for (int i = (MAX_LED - BlinkerLEDs); i < MAX_LED; i++)
-  {
-	   Set_LED(i,0, 0, 0);
-  }
-   WS2812_Send();
-}
-
-// Led for BlinkerLEDs to MAX_LED are set to Red color with 30% Brightness
-
-void RightLit()
-{
-  for (int i = BlinkerLEDs; i < MAX_LED; i++)
-  {
-	  Set_LED(i,0, 150, 0);
-  }
-  WS2812_Send();
-}
-
-// Led for BlinkerLEDs to MAX_LED are set to Red color with full Brightness
-
-void RightFull()
-{
-  for (int i = BlinkerLEDs; i < MAX_LED; i++)
-  {
-	  Set_LED(i,0, 255, 0);
-  }
-  WS2812_Send();
-}
-
-// Dual blinking
-
-void DualBlinker()
-{
-  for (int i = (BlinkerLEDs-1); i >= 0; i--)
-  {
-	  Set_LED(i,100, 240, 0);
-	  Set_LED(MAX_LED-1-i,100, 240, 0);
-	  WS2812_Send();
-      HAL_Delay(BlinkerSpeed);
-  }
-}
-
-void Left(){
-	LeftDim();
-	RightLit();
-	LeftBlinker();
-	LeftDim();
-	HAL_Delay(BlinkerOffDelay);
-
-}
-void Right(){
-	RightDim();
-	LeftLit();
-	RightBlinker();
-	RightDim();
-	HAL_Delay(BlinkerOffDelay);
-
-}
-void Left_Break(){
-	LeftDim();
-	RightFull();
-	LeftBlinker();
-	LeftDim();
-	HAL_Delay(BlinkerOffDelay);
-
-}
-void Right_Break(){
-	RightDim();
-	LeftFull();
-	RightBlinker();
-	RightDim();
-	HAL_Delay(BlinkerOffDelay);
-}
-void Dual(){
-	LeftDim();
-	RightDim();
-	ParkMiddle();
-	DualBlinker();
-	LeftDim();
-	RightDim();
-	HAL_Delay(BlinkerOffDelay);
-}
-void Dual_Break(){
-	LeftDim();
-	RightDim();
-	BrakeMiddle();
-	DualBlinker();
-	LeftDim();
-	RightDim();
-	HAL_Delay(BlinkerOffDelay);
-}
 
 /* USER CODE END 0 */
 
@@ -399,11 +92,7 @@ int main(void)
   MX_DMA_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  /*for (int i = 0; i < 21; i++)
-  	  	 	  	   { Set_LED(i,0, 255, 0);
-  		 			//Set_LED(i-1,0, 0, 0);
 
-  		 	  	 	  }*/
 
   /* USER CODE END 2 */
 
@@ -414,26 +103,38 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  for (int i = 0; i < 7; i++) {
-	 	 		Set_LED(i,100, 240, 0);
-	 	 		WS2812_Send();
-	 	 	}
+	Start_ON();
 
-	 	 for (int i = 0; i < 7; i++)
-	 	  	   {
-	 		 for(int j=0 ; j<150; j++){
-	 			 Set_LED(i,0, 0, 0);
-	 			//Set_LED(i-1,0, 0, 0);
-	 	  	 	  WS2812_Send();
-	 	  	 	  }
-	 	  	   }
+	 /* for (int i=0 ; i<5; i++){
+		  Left();
+	  }
+	  for (int i=0 ; i<5; i++){
+		  Left_Break();
+	 	  }
+	  for (int i=0 ; i<5; i++){
+		  Right();
+	 	  }
+	  for (int i=0 ; i<5; i++){
+		  Right_Break();
+	 	  }
+	  for (int i=0 ; i<5; i++){
+		  ParkFull();
+		  HAL_Delay(500);
+	 	 	  }
+	  for (int i=0 ; i<5; i++){
+	 		  BrakeFull();
+	 		 HAL_Delay(500);
+	 	 	  }
+	  for (int i=0 ; i<5; i++){
+	  	 		  Dual();
+	  	 	 	  }
+	  for (int i=0 ; i<5; i++){
+		  Dual_Break();
+	  	 	 	  }*/
 
-	 	/*for (int i = 0; i < 7; i++)
-	 		 	  	   {
-	 		 	  	 	  Set_LED(i,0, 0, 0);
-	 		 	  	   }*/
-	 	// HAL_Delay(1000);
-	   }
+
+    }
+
   /* USER CODE END 3 */
 }
 
@@ -459,16 +160,10 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 96;
+  RCC_OscInitStruct.PLL.PLLN = 72;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Activate the Over-Drive mode
-  */
-  if (HAL_PWREx_EnableOverDrive() != HAL_OK)
   {
     Error_Handler();
   }
@@ -481,7 +176,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
